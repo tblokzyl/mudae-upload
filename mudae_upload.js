@@ -16,7 +16,10 @@ const client = new Client({
 
 async function createAlbum() {
     try {
-        const response = await axios.post('https://api.imgur.com/3/album', {}, {
+        const response = await axios.post('https://api.imgur.com/3/album', {
+            title: "New Album", 
+            privacy: 'public'  
+        }, {
             headers: {
                 Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`,
             },
