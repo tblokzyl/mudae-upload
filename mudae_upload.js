@@ -33,7 +33,9 @@ async function uploadImageToAlbum(imageUrl, albumId) {
     const form = new FormData();
     form.append('image', imageUrl);
     form.append('type', 'url');
-    form.append('album', albumId);
+    if (albumId) {
+        form.append('album', albumId);
+    }
 
     try {
         const response = await axios.post('https://api.imgur.com/3/upload', form, {
@@ -42,6 +44,9 @@ async function uploadImageToAlbum(imageUrl, albumId) {
                 Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`,
             }
         });
+
+        console.log('Imgur upload response:', response.data);
+
         return response.data;
     } catch (error) {
         console.error('Error uploading image to album:', error.response ? error.response.data : error.message);
