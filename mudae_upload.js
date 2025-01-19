@@ -14,9 +14,10 @@ const client = new Client({
     ]
 });
 
-async function createAlbum() {
+async function createAlbum(albumName = null) { // <-- Added albumName parameter
     try {
-        const response = await axios.post('https://api.imgur.com/3/album', {}, {
+        const data = albumName ? { title: albumName } : {}; // <-- Pass albumName to Imgur API if provided
+        const response = await axios.post('https://api.imgur.com/3/album', data, {
             headers: {
                 Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`
             }
@@ -48,9 +49,9 @@ async function uploadImageToAlbum(imageUrl, albumId) {
     }
 }
 
-async function createAlbumAndUploadImage(imageUrl, albumCode = null) {
+async function createAlbumAndUploadImage(imageUrl, albumCode = null, albumName = null) { // <-- Added albumName parameter
     try {
-        const albumId = albumCode || await createAlbum();
+        const albumId = albumCode || await createAlbum(albumName); // <-- Use existing albumCode or create one with albumName
         const imgurResponse = await uploadImageToAlbum(imageUrl, albumId);
         return imgurResponse.data.link;
     } catch (error) {
@@ -66,9 +67,12 @@ client.on('ready', async () => {
             option.setName('image_url')
                 .setDescription('The URL of the image on Image Chest')
                 .setRequired(true))
-        .addStringOption(option =>
+        .addStringOption(option => // <-- Added album_code option
             option.setName('album_code')
-                .setDescription('The existing album code (optional)'));
+                .setDescription('The existing album code (optional)'))
+        .addStringOption(option => // <-- Added album_name option
+            option.setName('album_name')
+                .setDescription('The name of the album to create (optional)'));
 
     await client.application.commands.create(command);
 });
@@ -80,17 +84,18 @@ client.on('interactionCreate', async (interaction) => {
 
     if (commandName === 'upload') {
         const imageUrl = interaction.options.getString('image_url');
-        const albumCode = interaction.options.getString('album_code');
+        const albumCode = interaction.options.getString('album_code'); // <-- Retrieve album_code from command
+        const albumName = interaction.options.getString('album_name'); // <-- Retrieve album_name from command
 
         if (!imageUrl) {
             return interaction.reply('Please provide a valid image URL!');
         }
 
         try {
-            await interaction.deferReply(); // Send the deferred reply immediately
+            await interaction.deferReply();
 
-            const imageLink = await createAlbumAndUploadImage(imageUrl, albumCode);
-            await interaction.editReply(`Image uploaded: ${imageLink}`); // Send the final response after processing
+            const imageLink = await createAlbumAndUploadImage(imageUrl, albumCode, albumName); // <-- Pass albumCode and albumName
+            await interaction.editReply(`Image uploaded: ${imageLink}`);
         } catch (error) {
             await interaction.editReply('There was an error uploading the image.');
         }
