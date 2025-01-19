@@ -16,16 +16,25 @@ const client = new Client({
 
 async function createAlbum() {
     try {
-        const response = await axios.post('https://api.imgur.com/3/album', {
-            title: "New Album", 
-            privacy: 'public'  
-        }, {
+        const response = await axios.post('https://api.imgur.com/3/album', {}, {
             headers: {
                 Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`,
             },
         });
 
-        return response.data.data.id;
+        const albumId = response.data.data.id;
+
+        // Set the album to public
+        await axios.put(`https://api.imgur.com/3/album/${albumId}`, {
+            title: response.data.data.title,
+            privacy: 'public',  // Set the album to public
+        }, {
+            headers: {
+                Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`,
+            }
+        });
+
+        return albumId;
     } catch (error) {
         console.error('Error creating album:', error.response ? error.response.data : error.message);
         throw new Error('Error creating album');
@@ -41,7 +50,7 @@ async function findAlbumByName(albumName) {
         });
 
         const albums = response.data.data;
-        const album = albums.find(a => a.title === albumName);
+        const album = albums.find(a => a.title.toLowerCase().includes(albumName.toLowerCase()));
 
         return album ? album.id : null;
     } catch (error) {
@@ -110,7 +119,7 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         try {
-            await interaction.deferReply();  // Wait for the upload to finish
+            await interaction.deferReply();
 
             const imgurResponse = await uploadImageToAlbum(imageUrl, albumName);
             return interaction.editReply(`Image uploaded successfully: ${imgurResponse.data.link}`);
