@@ -100,17 +100,19 @@ client.on('interactionCreate', async (interaction) => {
 
     if (commandName === 'upload') {
         const imageUrl = interaction.options.getString('image_url');
-        const albumName = interaction.options.getString('album_name'); 
+        const albumName = interaction.options.getString('album_name');
 
         if (!imageUrl) {
             return interaction.reply('Please provide a valid image URL!');
         }
 
         try {
+            await interaction.deferReply();  // Wait for the upload to finish
+
             const imgurResponse = await uploadImageToAlbum(imageUrl, albumName);
-            return interaction.reply(`Image uploaded successfully: ${imgurResponse.data.link}`);
+            return interaction.editReply(`Image uploaded successfully: ${imgurResponse.data.link}`);
         } catch (error) {
-            return interaction.reply('There was an error uploading the image.');
+            return interaction.editReply('There was an error uploading the image.');
         }
     }
 });
