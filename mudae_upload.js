@@ -87,10 +87,12 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         try {
+            await interaction.deferReply(); // Send the deferred reply immediately
+
             const imageLink = await createAlbumAndUploadImage(imageUrl, albumCode);
-            return interaction.reply(`Image uploaded: ${imageLink}`);
+            await interaction.editReply(`Image uploaded: ${imageLink}`); // Send the final response after processing
         } catch (error) {
-            return interaction.reply('There was an error uploading the image.');
+            await interaction.editReply('There was an error uploading the image.');
         }
     }
 });
