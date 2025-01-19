@@ -14,14 +14,14 @@ const client = new Client({
     ]
 });
 
-async function createAlbum(albumName = null) {
+async function createAlbum() {
     try {
-        const data = albumName ? { title: albumName } : {};
-        const response = await axios.post('https://api.imgur.com/3/album', data, {
+        const response = await axios.post('https://api.imgur.com/3/album', {}, {
             headers: {
-                Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`
-            }
+                Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`,
+            },
         });
+
         return response.data.data.id;
     } catch (error) {
         console.error('Error creating album:', error.response ? error.response.data : error.message);
@@ -29,13 +29,39 @@ async function createAlbum(albumName = null) {
     }
 }
 
-async function uploadImageToAlbum(imageUrl, albumId) {
+async function findAlbumByName(albumName) {
+    try {
+        const response = await axios.get('https://api.imgur.com/3/account/me/albums', {
+            headers: {
+                Authorization: `Bearer ${IMGUR_ACCESS_TOKEN}`,
+            }
+        });
+
+        const albums = response.data.data;
+        const album = albums.find(a => a.title === albumName);
+
+        return album ? album.id : null;
+    } catch (error) {
+        console.error('Error finding album:', error.response ? error.response.data : error.message);
+        throw new Error('Error finding album');
+    }
+}
+
+async function uploadImageToAlbum(imageUrl, albumName) {
+    let albumId = null;
+
+    if (albumName) {
+        albumId = await findAlbumByName(albumName);
+    }
+
+    if (!albumId) {
+        albumId = await createAlbum();
+    }
+
     const form = new FormData();
     form.append('image', imageUrl);
     form.append('type', 'url');
-    if (albumId) {
-        form.append('album', albumId);
-    }
+    form.append('album', albumId);
 
     try {
         const response = await axios.post('https://api.imgur.com/3/upload', form, {
@@ -45,39 +71,24 @@ async function uploadImageToAlbum(imageUrl, albumId) {
             }
         });
 
-        console.log('Imgur upload response:', response.data);
-
         return response.data;
     } catch (error) {
-        console.error('Error uploading image to album:', error.response ? error.response.data : error.message);
-        throw new Error('Error uploading image to album');
-    }
-}
-
-async function createAlbumAndUploadImage(imageUrl, albumCode = null, albumName = null) {
-    try {
-        const albumId = albumCode || await createAlbum(albumName);
-        const imgurResponse = await uploadImageToAlbum(imageUrl, albumId);
-        return imgurResponse.data.link;
-    } catch (error) {
-        console.error('Error in uploading process:', error.message);
+        console.error('Error uploading image:', error.response ? error.response.data : error.message);
+        throw new Error('Error uploading image');
     }
 }
 
 client.on('ready', async () => {
     const command = new SlashCommandBuilder()
         .setName('upload')
-        .setDescription('Upload an image from Image Chest to Imgur')
+        .setDescription('Upload an image to Imgur')
         .addStringOption(option =>
             option.setName('image_url')
-                .setDescription('The URL of the image on Image Chest')
+                .setDescription('The URL of the image to upload')
                 .setRequired(true))
         .addStringOption(option =>
-            option.setName('album_code')
-                .setDescription('The existing album code (optional)'))
-        .addStringOption(option =>
             option.setName('album_name')
-                .setDescription('The name of the album to create (optional)'));
+                .setDescription('The name of the album to upload to (optional)'));
 
     await client.application.commands.create(command);
 });
@@ -89,7 +100,6 @@ client.on('interactionCreate', async (interaction) => {
 
     if (commandName === 'upload') {
         const imageUrl = interaction.options.getString('image_url');
-        const albumCode = interaction.options.getString('album_code');
         const albumName = interaction.options.getString('album_name'); 
 
         if (!imageUrl) {
@@ -97,12 +107,10 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         try {
-            await interaction.deferReply();
-
-            const imageLink = await createAlbumAndUploadImage(imageUrl, albumCode, albumName);
-            await interaction.editReply(`Image uploaded: ${imageLink}`);
+            const imgurResponse = await uploadImageToAlbum(imageUrl, albumName);
+            return interaction.reply(`Image uploaded successfully: ${imgurResponse.data.link}`);
         } catch (error) {
-            await interaction.editReply('There was an error uploading the image.');
+            return interaction.reply('There was an error uploading the image.');
         }
     }
 });
