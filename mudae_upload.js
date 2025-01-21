@@ -21,14 +21,12 @@ client.on('ready', async () => {
 
     const command = new SlashCommandBuilder()
         .setName('upload')
-        .setDescription('Upload an image to Imgur')
+        .setDescription('Upload images to Imgur using a formatted input string.')
         .addStringOption(option =>
-            option.setName('image_url')
-                .setDescription('The URL of the image to upload')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('album_name')
-                .setDescription('The name of the album to upload to (optional)'));
+            option.setName('input')
+                .setDescription('Input string: $ai Character Name$URL $ URL $ ...')
+                .setRequired(true)
+        );
 
     await client.application.commands.create(command);
 });
@@ -40,7 +38,7 @@ async function checkAlbumExists(albumName) {
         });
         return response.data.data.find(album => album.title === albumName);
     } catch (error) {
-        console.error('Error checking album existence:', error.message);
+        console.error('Error checking album existence:', error.response?.data || error.message);
         throw error;
     }
 }
@@ -68,10 +66,11 @@ async function uploadImageToAlbum(imageUrl, albumId) {
         );
         return response.data.data;
     } catch (error) {
-        console.error('Error uploading image:', error.message);
+        console.error('Error uploading image:', error.response?.data || error.message);
         throw error;
     }
 }
+
 
 async function deleteImage(imageId) {
     try {
@@ -105,43 +104,71 @@ async function getAlbumDetails(albumId, retries = 3) {
 }
 
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isCommand()) return;
+    if (!interaction.isCommand() || interaction.commandName !== 'upload') return;
 
-    const { commandName } = interaction;
+    const input = interaction.options.getString('input'); // Fetch the input string
 
-    if (commandName === 'upload') {
-        const imageUrl = interaction.options.getString('image_url');
-        const albumName = interaction.options.getString('album_name') || 'New Album';
+    // Ensure the input starts with `$ai` and is properly formatted
+    const regex = /^\$ai\s+([^$]+)\$(.+)$/; // Matches "$ai Character Name$URL $ URL $ ..."
+    const match = input.match(regex);
 
-        if (!imageUrl) return interaction.reply('Please provide a valid image URL!');
+    if (!match) {
+        return interaction.reply({
+            content: 'Invalid format! Use: `$ai Character Name$URL $ URL $ ...`',
+            ephemeral: true,
+        });
+    }
 
-        try {
-            await interaction.deferReply();
+    const characterName = match[1].trim(); // Extract the character name
+    const urlsString = match[2].trim(); // Extract the string with image URLs
 
-            const album = await checkAlbumExists(albumName);
+    // Split URLs by `$`, filter out empty entries, and trim whitespace
+    const imageUrls = urlsString.split('$').map(url => url.trim()).filter(url => url);
 
-            let albumId;
-            if (!album) {
-                await interaction.editReply(`No album found with the name "${albumName}". Creating a new one...`);
-                const createdAlbum = await createAlbum(albumName);
-                albumId = createdAlbum.id;
+    if (!imageUrls.length) {
+        return interaction.reply({
+            content: 'No valid image URLs found in your command!',
+            ephemeral: true,
+        });
+    }
 
-                console.log('Uploading test image...');
-                const testImage = await uploadImageToAlbum(TEST_IMAGE_URL, albumId);
-                await deleteImage(testImage.id);
-            } else {
-                albumId = album.id;
-                await interaction.editReply(`Found an album with the name "${albumName}". Uploading your image...`);
-            }
-
-            const uploadedImage = await uploadImageToAlbum(imageUrl, albumId);
-            await getAlbumDetails(albumId);
-
-            await interaction.editReply(`Image uploaded successfully to the album "${albumName}"! Image URL: ${uploadedImage.link}`);
-        } catch (error) {
-            console.error('Error handling /upload command:', error.message);
-            await interaction.editReply('An error occurred while uploading the image. Please try again later.');
+    try {
+        await interaction.reply(`Processing images for **${characterName}**...`);
+    
+        const albumName = characterName; // Use character name as the album name
+        let album = await checkAlbumExists(albumName);
+    
+        let albumId;
+        if (!album) {
+            // If album doesn't exist, create a new one
+            album = await createAlbum(albumName);
+            albumId = album.id;
+    
+            // Add a test image and delete it to initialize the album
+            const testImage = await uploadImageToAlbum(TEST_IMAGE_URL, albumId);
+            await deleteImage(testImage.id);
+        } else {
+            albumId = album.id;
         }
+    
+        // Upload each image URL to the album
+        const uploadedImages = [];
+        for (const imageUrl of imageUrls) {
+            const uploadedImage = await uploadImageToAlbum(imageUrl, albumId);
+            uploadedImages.push(uploadedImage.link);
+        }
+    
+        // Respond with the album link and uploaded images
+        await interaction.editReply(
+            `Images for **${characterName}** have been uploaded to the album "${albumName}".\n` +
+            `Album Link: https://imgur.com/a/${albumId}\n\n` +
+            `Uploaded Images:\n${uploadedImages.join('\n')}`
+        );
+    } catch (error) {
+        console.error('Error handling upload command:', error.message);
+        await interaction.editReply(
+            'An error occurred while processing the command. Please try again later.'
+        );
     }
 });
 
