@@ -71,6 +71,22 @@ async function uploadImageToAlbum(imageUrl, albumId) {
     }
 }
 
+async function uploadImageWithRetry(url, albumId, retries = 5) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await uploadImageToAlbum(url, albumId);
+        } catch (error) {
+            if (error.response && error.response.status === 429) {
+                const retryAfter = error.response.headers['retry-after'] || 1;
+                console.log(`Rate limited. Retrying after ${retryAfter} seconds...`);
+                await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+            } else {
+                throw error;
+            }
+        }
+    }
+    throw new Error('Failed to upload image after multiple retries');
+}
 
 async function deleteImage(imageId) {
     try {
@@ -145,7 +161,7 @@ client.on('interactionCreate', async (interaction) => {
             albumId = album.id;
     
             // Add a test image and delete it to initialize the album
-            const testImage = await uploadImageToAlbum(TEST_IMAGE_URL, albumId);
+            const testImage = await uploadImageWithRetry(TEST_IMAGE_URL, albumId);
             await deleteImage(testImage.id);
         } else {
             albumId = album.id;
@@ -154,7 +170,7 @@ client.on('interactionCreate', async (interaction) => {
         // Upload each image URL to the album
         const uploadedImages = [];
         for (const imageUrl of imageUrls) {
-            const uploadedImage = await uploadImageToAlbum(imageUrl, albumId);
+            const uploadedImage = await uploadImageWithRetry(imageUrl, albumId);
             uploadedImages.push(uploadedImage.link);
         }
     
@@ -172,4 +188,4 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-client.login(DISCORD_TOKEN); 
+client.login(DISCORD_TOKEN);
